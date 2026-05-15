@@ -1,0 +1,11 @@
+; AGKVitaPlayer - game configuration
+;
+; Edit these two values for your game, then double-click MAKE_VPK.bat.
+;
+; GAME_NAME : the name shown under the bubble on the Vita (any text)
+; TITLE_ID  : EXACTLY 9 characters - 4 uppercase letters + 5 digits.
+;             Must be unique per game, or installing a second game
+;             overwrites the first on the console.
+
+GAME_NAME=My AGK Game
+TITLE_ID=AGKG00001

@@ -1,0 +1,25 @@
+THIRD-PARTY COMPONENTS
+======================
+
+This repository contains only the PS Vita port layer. It does not bundle the
+AppGameKit engine or any SDK — those are obtained separately and have their own
+terms. Listed here for reference.
+
+AppGameKit engine
+  Owner   : The Game Creators
+  Source  : https://github.com/TheGameCreators/AGKRepo
+  Note    : NOT redistributed here. Src/patches/engine.patch only describes
+            modifications; you apply it to your own copy of the engine.
+
+Vita SDK (vitasdk)
+  Source  : https://vitasdk.org  /  https://github.com/vitasdk
+  Note    : toolchain and the vita-pack-vpk / vita-mksfoex tools used by
+            Player/ are part of vita-toolchain.
+
+vitaGL
+  Author  : Rinnegatamante
+  Source  : https://github.com/Rinnegatamante/vitaGL
+
+Bundled inside the AppGameKit engine (not in this repo): Bullet, Box2D, zlib,
+libpng, libjpeg, giflib, freetype, libogg/libvorbis, zxing, assimp — each under
+its own terms within the AppGameKit repository.

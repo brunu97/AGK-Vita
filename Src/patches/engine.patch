@@ -1,0 +1,271 @@
+--- a/AGK/common/include/PlatformDefines.h
++++ b/AGK/common/include/PlatformDefines.h
+@@ -34,4 +34,12 @@
+ 	#define AGK_HTML5
+ #endif
+ 
++#if defined(IDE_VITA) && !defined(AGK_VITA)
++	#define AGK_VITA
++#endif
++
++#if defined(__vita__) && !defined(AGK_VITA)
++	#define AGK_VITA
++#endif
++
+ #endif // _H_AGK_PLATFORMDEFINES_
+\ No newline at end of file
+--- a/AGK/common/include/Common.h
++++ b/AGK/common/include/Common.h
+@@ -333,7 +333,57 @@
+     #endif
+ 
+ 	static int agkfloattoint( float flt )
+-	{	
++	{
++		return lrintf( flt );
++	}
++#endif
++
++#ifdef AGK_VITA
++	#ifndef _AGK_ERROR_CHECK
++		#define _AGK_ERROR_CHECK
++	#endif
++
++	#include <ctype.h>
++	#include <unistd.h>
++	#include <stdio.h>
++	#include <stdlib.h>
++	#include <string.h>
++	#include <assert.h>
++	#include <math.h>
++	#include <time.h>
++
++	#include <sys/types.h>
++	#include <sys/stat.h>
++	#include <fcntl.h>
++	#include <pthread.h>
++	#include <stdarg.h>
++	#include <stdint.h>
++	#include <malloc.h>
++	#include <psp2/net/net.h>
++	#include <psp2/net/netctl.h>
++	#include <arpa/inet.h>
++
++	/* The engine relies on Intel intrinsic-style aligned allocators inherited
++	 * from the Linux build (<mm_malloc.h>). ARM has no _mm_malloc; map onto
++	 * newlib's memalign / free which provide the same behaviour. */
++	#define _mm_malloc(size, align) memalign(align, size)
++	#define _mm_free(ptr)           free(ptr)
++
++	#ifndef _EXPORT_
++		#define _EXPORT_
++	#endif
++
++	#define MAX_PATH 512
++	#define INVALID_SOCKET -1
++	#define SOCKET_ERROR -1
++	#define STDCALL
++
++	#ifndef UINT_PTR
++		#define UINT_PTR uintptr_t
++	#endif
++
++	static int agkfloattoint( float flt )
++	{
+ 		return lrintf( flt );
+ 	}
+ #endif
+--- a/AGK/common/include/NetworkCommon.h
++++ b/AGK/common/include/NetworkCommon.h
+@@ -31,4 +31,8 @@
+ 		#include "../../platform/html5/Source/HTML5Network.h"
+ 	#endif
+ 
++	#ifdef AGK_VITA
++		#include "../../platform/vita/Source/VitaNetwork.h"
++	#endif
++
+ #endif
+--- a/AGK/common/include/Thread.h
++++ b/AGK/common/include/Thread.h
+@@ -149,4 +149,8 @@
+ 	#include "../../platform/html5/Source/HTML5Thread.h"
+ #endif
+ 
++#ifdef AGK_VITA
++	#include "../../platform/vita/Source/VitaThread.h"
++#endif
++
+ #endif
+--- a/AGK/renderer/OpenGLES2/OpenGL_ES2.h
++++ b/AGK/renderer/OpenGLES2/OpenGL_ES2.h
+@@ -74,6 +74,20 @@
+ 	#include <GLFW/glfw3.h>
+ #endif
+ 
++#ifdef AGK_VITA
++	/* vitaGL re-exports an OpenGL ES 2-ish API and pulls in the relevant
++	 * GL enums (GL_*, glActiveTexture, etc.) — no separate GLES2/gl2.h on
++	 * the Vita toolchain. */
++	#include <vitaGL.h>
++
++	void SetRendererPointers( void *ptr );
++	int GetSurfaceWidth();
++	int GetSurfaceHeight();
++
++	int GLESCreateRendererWindow( void *ptr, int deviceWidth, int deviceHeight );
++	void GLESSetRendererPointers( void *ptr, int deviceWidth, int deviceHeight );
++#endif
++
+ void CheckRendererExtensions();
+ 
+ 
+--- a/AGK/renderer/OpenGLES2/OpenGL_ES2.cpp
++++ b/AGK/renderer/OpenGLES2/OpenGL_ES2.cpp
+@@ -675,6 +675,33 @@
+ 	void GLESSetRendererPointers( void *ptr, int deviceWidth, int deviceHeight ) {}
+ #endif
+ 
++#ifdef AGK_VITA
++	/* On Vita there is no separate window/context object — vitaGL owns the
++	 * SceGxm context internally. The renderer just records the size. */
++	static int g_iVitaSurfaceW = 960;
++	static int g_iVitaSurfaceH = 544;
++
++	void SetRendererPointers( void *ptr ) { (void)ptr; }
++	/* The Vita display is always 960x544 — return it fixed so the engine's
++	 * surface size can never end up 0x0. */
++	int GetSurfaceWidth()                 { (void)g_iVitaSurfaceW; return 960; }
++	int GetSurfaceHeight()                { (void)g_iVitaSurfaceH; return 544; }
++
++	int GLESCreateRendererWindow( void *ptr, int deviceWidth, int deviceHeight )
++	{
++		(void)ptr;
++		if ( deviceWidth  > 0 ) g_iVitaSurfaceW = deviceWidth;
++		if ( deviceHeight > 0 ) g_iVitaSurfaceH = deviceHeight;
++		return 1;
++	}
++	void GLESSetRendererPointers( void *ptr, int deviceWidth, int deviceHeight )
++	{
++		(void)ptr;
++		if ( deviceWidth  > 0 ) g_iVitaSurfaceW = deviceWidth;
++		if ( deviceHeight > 0 ) g_iVitaSurfaceH = deviceHeight;
++	}
++#endif
++
+ 
+ 
+ 
+@@ -744,19 +771,22 @@
+ 	eglQuerySurface(display, surface, EGL_HEIGHT, &m_iSurfaceHeight);
+ #elif defined(AGK_HTML5)
+ 	glfwGetFramebufferSize( g_pWindow, &m_iSurfaceWidth, &m_iSurfaceHeight );
++#elif defined(AGK_VITA)
++	m_iSurfaceWidth  = GetSurfaceWidth();
++	m_iSurfaceHeight = GetSurfaceHeight();
+ #else
+ 	#error Unknown OPENGLES platform
+ #endif
+ 
+ 	AppInfo( "Surface Size: %dx%d", m_iSurfaceWidth, m_iSurfaceHeight );
+-    
++
+     return APP_SUCCESS;
+ }
+ 
+ int OpenGLES2Renderer::WindowResized( void* param1, void* param2, unsigned int width, unsigned int height )
+ {
+     GLESSetRendererPointers( param1, width, height );
+-        
++
+ #if defined(AGK_IOS)
+     glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &m_iSurfaceWidth);
+     glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &m_iSurfaceHeight);
+@@ -765,6 +795,9 @@
+ 	eglQuerySurface(display, surface, EGL_HEIGHT, &m_iSurfaceHeight);
+ #elif defined(AGK_HTML5)
+ 	glfwGetFramebufferSize( g_pWindow, &m_iSurfaceWidth, &m_iSurfaceHeight );
++#elif defined(AGK_VITA)
++	m_iSurfaceWidth  = GetSurfaceWidth();
++	m_iSurfaceHeight = GetSurfaceHeight();
+ #else
+ 	#error Unknown OPENGLES platform
+ #endif
+@@ -827,12 +860,14 @@
+ 	surface = EGL_NO_SURFACE;
+ #elif defined(AGK_HTML5)
+ 	// do nothing
++#elif defined(AGK_VITA)
++	// do nothing — vitaGL owns the surface
+ #else
+ 	#error Unknown OPENGLES platform
+ #endif
+ }
+ 
+-void OpenGLES2Renderer::LosingFocus() 
++void OpenGLES2Renderer::LosingFocus()
+ {
+ 	glFinish(); // this fixes a crash on some Android Adreno GPUs, can't hurt to do it on everything
+ }
+@@ -857,11 +892,18 @@
+         m_iSupportsIntIndices = 1;
+     }
+ 
++#ifdef AGK_VITA
++	/* vitaGL does not expose glGetShaderPrecisionFormat. Vita's GXM always
++	 * supports high-precision floats in the fragment stage, so just assert
++	 * the capability. */
++	m_iSupportsPSHighP = 1;
++#else
+ 	int range[2];
+ 	int precision;
+ 	glGetShaderPrecisionFormat( GL_FRAGMENT_SHADER, GL_HIGH_FLOAT, range, &precision );
+ 	if ( range[0] > 0 ) m_iSupportsPSHighP = 1;
+ 	else m_iSupportsPSHighP = 0;
++#endif
+ 
+ 	glGetIntegerv( GL_MAX_VERTEX_UNIFORM_VECTORS, &m_iMaxVSUniforms );
+ 	glGetIntegerv( GL_MAX_FRAGMENT_UNIFORM_VECTORS, &m_iMaxPSUniforms );
+@@ -926,10 +968,14 @@
+     glfwSwapBuffers(g_pWindow);
+ #elif defined(AGK_RASPPI)
+ 	eglSwapBuffers(g_pWindow,g_pSurface);
++#elif defined(AGK_VITA)
++	/* vitaGL — performs the SceGxm buffer swap. Passing GL_TRUE would request
++	 * vsync; we leave that to SetVSync(). */
++	vglSwapBuffers(GL_FALSE);
+ #else
+     #error unrecognised platform
+ #endif
+-    
++
+ 	return APP_SUCCESS;
+ }
+ 
+@@ -959,7 +1005,11 @@
+ #elif defined(AGK_HTML5)
+     // never called
+ #elif defined(AGK_RASPPI)
+-    #error todo
++    // EGL swap interval is not reliable on the Pi userland driver
++#elif defined(AGK_VITA)
++	/* vitaGL exposes vblank waiting through vglWaitVblankStart. mode != 0
++	 * enables vsync (wait one vblank between swaps). */
++	vglWaitVblankStart(mode != 0 ? GL_TRUE : GL_FALSE);
+ #else
+     #error unrecognised platform
+ #endif
+@@ -1742,10 +1792,12 @@
+ 	{
+ 		switch( result )
+ 		{
++#ifndef AGK_VITA
+ 			case GL_FRAMEBUFFER_UNSUPPORTED: agk::Error( "GL_FRAMEBUFFER_UNSUPPORTED" ); break;
+ 			case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: agk::Error( "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT" ); break;
++#endif
+ 			case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: agk::Error( "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT" ); break;
+-			default: 
++			default:
+ 			{
+ 				uString err = "Framebuffer error: ";
+ 				err += result;

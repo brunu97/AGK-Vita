@@ -1,0 +1,18 @@
+# Build output
+build/
+_build/
+_pack/
+*.velf
+*.self
+*.vpk
+*.elf
+param.sfo
+
+# The compiled engine binary is built from the original AGK engine —
+# don't commit it.
+Player/bin/
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.swp

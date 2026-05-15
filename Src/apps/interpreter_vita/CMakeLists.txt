@@ -1,0 +1,181 @@
+cmake_minimum_required(VERSION 3.16)
+
+# ----------------------------------------------------------------------------
+# AppGameKit — PS Vita interpreter (AGKPlayer)
+#
+# Builds the engine + the AGK bytecode interpreter into a .vpk. At startup the
+# interpreter looks for "bytecode.byc" in app0:/ and runs it standalone.
+#
+# To package a specific game, point GAME_BYTECODE / GAME_MEDIA_DIR below at the
+# compiled .agc output, then build. The result is build/agk_interpreter_vita.vpk.
+# ----------------------------------------------------------------------------
+
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  if(DEFINED ENV{VITASDK})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
+  else()
+    message(FATAL_ERROR "Please define VITASDK to point to your SDK path.")
+  endif()
+endif()
+
+project(agk_interpreter_vita CXX C)
+include("${VITASDK}/share/vita.cmake" REQUIRED)
+
+set(VITA_APP_NAME "AGK Vita Player")
+set(VITA_TITLEID  "AGKP00001")
+set(VITA_VERSION  "01.00")
+
+# The compiled AGK bytecode to bundle (app0:/bytecode.byc inside the VPK).
+set(GAME_BYTECODE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../PSVISTA/media/bytecode.byc")
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_C_STANDARD   99)
+
+add_compile_definitions(
+  AGK_VITA
+  IDE_VITA
+  _AGK_ERROR_CHECK
+  HAVE_M_PI
+  DISABLE_VULKAN
+  fopen64=fopen
+  ftello64=ftell
+  fseeko64=fseek
+  UINT32=uint32_t
+  HAVE_FCNTL_H=1
+  HAVE_UNISTD_H=1
+  HAVE_STDARG_H=1
+)
+
+set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -Wl,-q -Wall -O2 -ffast-math -fsigned-char -include stdint.h -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -Wno-error")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,-q -Wall -O2 -ffast-math -fsigned-char -fexceptions -frtti -fpermissive -include stdint.h -Wno-error")
+
+set(AGK_ROOT   "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+set(COMMON_SRC "${AGK_ROOT}/common")
+set(VITA_SRC   "${AGK_ROOT}/platform/vita/Source")
+set(REND_SRC   "${AGK_ROOT}/renderer/OpenGLES2")
+set(INTERP_SRC "${AGK_ROOT}/apps/interpreter")
+
+include_directories(
+  ${COMMON_SRC}/include
+  ${COMMON_SRC}
+  ${AGK_ROOT}/renderer
+  ${AGK_ROOT}/giflib
+  ${AGK_ROOT}/zxing
+  ${AGK_ROOT}/libpng
+  ${AGK_ROOT}/libjpeg
+  ${AGK_ROOT}/zlib
+  ${AGK_ROOT}/assimp
+  ${AGK_ROOT}/bullet
+  ${AGK_ROOT}/bullet/BulletCollision/CollisionShapes
+  ${AGK_ROOT}/libogg/include
+  ${AGK_ROOT}/freetype/include
+  ${REND_SRC}
+  ${VITA_SRC}
+  ${INTERP_SRC}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# Engine sources — identical list to template_vita.
+set(ENGINE_SRC
+  ${COMMON_SRC}/Source/3DMath.cpp        ${COMMON_SRC}/Source/3DParticles.cpp
+  ${COMMON_SRC}/Source/AGKFont.cpp       ${COMMON_SRC}/Source/AGKLights.cpp
+  ${COMMON_SRC}/Source/AGKMotionState.cpp ${COMMON_SRC}/Source/AGKShader.cpp
+  ${COMMON_SRC}/Source/AGKSkyBox.cpp     ${COMMON_SRC}/Source/AGKToBullet.cpp
+  ${COMMON_SRC}/Source/AGO.cpp           ${COMMON_SRC}/Source/AppErrors.cpp
+  ${COMMON_SRC}/Source/BaseItem.cpp      ${COMMON_SRC}/Source/CharacterController.cpp
+  ${COMMON_SRC}/Source/CollisionShapes.cpp ${COMMON_SRC}/Source/ContactReport.cpp
+  ${COMMON_SRC}/Source/DebugDraw.cpp     ${COMMON_SRC}/Source/DynamicsWorld.cpp
+  ${COMMON_SRC}/Source/FrameBuffer.cpp   ${COMMON_SRC}/Source/GLDebugDrawer.cpp
+  ${COMMON_SRC}/Source/JSONElement.cpp   ${COMMON_SRC}/Source/Joint.cpp
+  ${COMMON_SRC}/Source/Joints.cpp        ${COMMON_SRC}/Source/Joystick.cpp
+  ${COMMON_SRC}/Source/Mouse.cpp         ${COMMON_SRC}/Source/Network.cpp
+  ${COMMON_SRC}/Source/Particles.cpp     ${COMMON_SRC}/Source/Physics.cpp
+  ${COMMON_SRC}/Source/Ragdoll.cpp       ${COMMON_SRC}/Source/RagdollBone.cpp
+  ${COMMON_SRC}/Source/Ray.cpp           ${COMMON_SRC}/Source/RigidBodies.cpp
+  ${COMMON_SRC}/Source/RigidBody.cpp     ${COMMON_SRC}/Source/SimplexNoise.cpp
+  ${COMMON_SRC}/Source/Skeleton2D.cpp    ${COMMON_SRC}/Source/Skeleton3D.cpp
+  ${COMMON_SRC}/Source/StaticPlane.cpp   ${COMMON_SRC}/Source/Tween.cpp
+  ${COMMON_SRC}/Source/Vector.cpp        ${COMMON_SRC}/Source/Wrapper.cpp
+  ${COMMON_SRC}/Source/ZipFile.cpp       ${COMMON_SRC}/Source/cCamera.cpp
+  ${COMMON_SRC}/Source/cEvent.cpp        ${COMMON_SRC}/Source/cFile.cpp
+  ${COMMON_SRC}/Source/cForce.cpp        ${COMMON_SRC}/Source/cHashedList.cpp
+  ${COMMON_SRC}/Source/cImage.cpp        ${COMMON_SRC}/Source/cMesh.cpp
+  ${COMMON_SRC}/Source/cNode.cpp         ${COMMON_SRC}/Source/cObject3D.cpp
+  ${COMMON_SRC}/Source/cObjectMgr.cpp    ${COMMON_SRC}/Source/cSound.cpp
+  ${COMMON_SRC}/Source/cSprite.cpp       ${COMMON_SRC}/Source/cSpriteMgr.cpp
+  ${COMMON_SRC}/Source/cText.cpp         ${COMMON_SRC}/Source/cTextEntry.cpp
+  ${COMMON_SRC}/Source/cTouch.cpp        ${COMMON_SRC}/Source/sha1.cpp
+  ${COMMON_SRC}/Source/sha2.cpp          ${COMMON_SRC}/Source/uString.cpp
+)
+
+file(GLOB BOX2D_SRC
+  ${COMMON_SRC}/Box2D/Collision/*.cpp        ${COMMON_SRC}/Box2D/Collision/Shapes/*.cpp
+  ${COMMON_SRC}/Box2D/Common/*.cpp           ${COMMON_SRC}/Box2D/Dynamics/*.cpp
+  ${COMMON_SRC}/Box2D/Dynamics/Contacts/*.cpp ${COMMON_SRC}/Box2D/Dynamics/Joints/*.cpp
+  ${COMMON_SRC}/Box2D/Rope/*.cpp
+)
+file(GLOB COLLISION_SRC ${COMMON_SRC}/Collision/*.cpp)
+file(GLOB_RECURSE BULLET_SRC
+  ${AGK_ROOT}/bullet/LinearMath/*.cpp        ${AGK_ROOT}/bullet/BulletCollision/*.cpp
+  ${AGK_ROOT}/bullet/BulletDynamics/*.cpp    ${AGK_ROOT}/bullet/BulletFileLoader/*.cpp
+  ${AGK_ROOT}/bullet/BulletWorldImporter/*.cpp
+)
+file(GLOB_RECURSE ZXING_SRC ${AGK_ROOT}/zxing/*.cpp)
+file(GLOB_RECURSE ASSIMP_SRC ${AGK_ROOT}/assimp/*.cpp)
+list(APPEND ASSIMP_SRC ${AGK_ROOT}/assimp/include/ConvertUTF/ConvertUTF.c)
+
+set(RENDERER_SRC ${REND_SRC}/OpenGL_ES2.cpp)
+
+set(VITA_PLATFORM_SRC
+  ${VITA_SRC}/VitaCore.cpp       ${VITA_SRC}/VitaNetwork.cpp
+  ${VITA_SRC}/VitaFileSystem.cpp ${VITA_SRC}/VitaAudio.cpp
+  ${VITA_SRC}/VitaMisc.cpp
+)
+
+set(THIRD_PARTY_SRC "")
+file(GLOB ZLIB_SRC ${AGK_ROOT}/zlib/*.c)
+list(FILTER ZLIB_SRC EXCLUDE REGEX ".*(iowin32|minizip|miniunz)\\.c$")
+list(APPEND THIRD_PARTY_SRC ${ZLIB_SRC})
+file(GLOB PNG_SRC  ${AGK_ROOT}/libpng/*.c)
+list(APPEND THIRD_PARTY_SRC ${PNG_SRC})
+file(GLOB JPEG_SRC ${AGK_ROOT}/libjpeg/*.c)
+list(FILTER JPEG_SRC EXCLUDE REGEX
+  ".*(cdjpeg|rdjpgcom|wrjpgcom|cjpeg|djpeg|jpegtran|jmemnobs|jmemname|rdcolmap|rdbmp|rdgif|rdppm|rdrle|rdswitch|rdtarga|wrbmp|wrgif|wrppm|wrrle|wrtarga|example|jmemdos|jmemmac|ckconfig|jmemsys|ansi2knr)\\.c$")
+list(APPEND THIRD_PARTY_SRC ${JPEG_SRC})
+file(GLOB GIF_SRC  ${AGK_ROOT}/giflib/*.c)
+list(APPEND THIRD_PARTY_SRC ${GIF_SRC})
+
+# Interpreter: the bytecode VM + this Vita entry point.
+set(INTERPRETER_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/Core.cpp
+  ${INTERP_SRC}/interpreter.cpp
+  ${INTERP_SRC}/ProgramData.cpp
+)
+
+add_executable(${PROJECT_NAME}
+  ${ENGINE_SRC} ${BOX2D_SRC} ${COLLISION_SRC} ${BULLET_SRC}
+  ${ZXING_SRC}  ${ASSIMP_SRC} ${RENDERER_SRC} ${VITA_PLATFORM_SRC}
+  ${THIRD_PARTY_SRC} ${INTERPRETER_SRC}
+)
+
+target_link_libraries(${PROJECT_NAME}
+  vitaGL vitashark SceShaccCgExt taihen_stub SceShaccCg_stub mathneon
+  SceLibKernel_stub SceCtrl_stub SceTouch_stub SceDisplay_stub SceGxm_stub
+  SceCommonDialog_stub ScePower_stub SceSysmodule_stub SceAppMgr_stub
+  SceAppUtil_stub SceAudio_stub SceIofilemgr_stub SceRtc_stub SceMotion_stub
+  SceProcessmgr_stub SceNet_stub SceNetCtl_stub SceKernelDmacMgr_stub
+  freetype vorbisfile vorbis ogg bz2
+  pthread m c stdc++
+)
+set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+
+vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME} UNSAFE)
+vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
+  VERSION ${VITA_VERSION}
+  NAME    ${VITA_APP_NAME}
+  FILE sce_sys/icon0.png                          sce_sys/icon0.png
+  FILE sce_sys/livearea/contents/bg.png           sce_sys/livearea/contents/bg.png
+  FILE sce_sys/livearea/contents/startup.png      sce_sys/livearea/contents/startup.png
+  FILE sce_sys/livearea/contents/template.xml     sce_sys/livearea/contents/template.xml
+  FILE ${GAME_BYTECODE}                           bytecode.byc
+)
