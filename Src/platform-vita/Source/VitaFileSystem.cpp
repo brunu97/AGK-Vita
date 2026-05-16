@@ -245,6 +245,18 @@ bool AGK::cFile::OpenToRead( const char *szFilename )
 		return false;
 	}
 
+	/* Reject directories: opening one as a file gives garbage reads. */
+	{
+		struct stat dirCheck;
+		if ( stat( sPath.GetStr(), &dirCheck ) == 0 && S_ISDIR( dirCheck.st_mode ) )
+		{
+			uString err = "Cannot open as a file, path is a directory: ";
+			err += szFilename;
+			agk::Error( err );
+			return false;
+		}
+	}
+
 	pFilePtr = 0;
 	pFile = AGKfopen( sPath, "rb" );
 	if ( !pFile )
@@ -289,9 +301,11 @@ uint32_t AGK::cFile::GetSize()
 	fpos_t pos;
 	fgetpos( pFile, &pos );
 	fseek( pFile, 0, SEEK_END );
-	uint32_t size = ftell( pFile );
+	long size = ftell( pFile );
 	fsetpos( pFile, &pos );
-	return size;
+	/* ftell gives -1 for non-regular files — don't let that wrap to a huge size. */
+	if ( size < 0 ) return 0;
+	return (uint32_t) size;
 }
 
 void AGK::cFile::Rewind()
@@ -526,13 +540,26 @@ int cFile::ReadString2( uString &str )
 	str.ClearTemp();
 
 	uint32_t length = 0;
-	fread( &length, 4, 1, pFile );
+	if ( fread( &length, 4, 1, pFile ) != 1 ) return 0;
 	// convert back to local endian, everything in the file is little endian.
 	length = agk::PlatformLocalEndian( length );
 
+	/* Guard against a bogus length prefix from a corrupt file. */
+	long cur = ftell( pFile );
+	fseek( pFile, 0, SEEK_END );
+	long end = ftell( pFile );
+	if ( cur >= 0 ) fseek( pFile, cur, SEEK_SET );
+	if ( cur < 0 || end < 0 || length > (uint32_t)( end - cur ) )
+	{
+#ifdef _AGK_ERROR_CHECK
+		agk::Error( "Corrupt file: string length exceeds remaining data" );
+#endif
+		return 0;
+	}
+
 	char *buffer = new char[ length+1 ];
-	fread( buffer, 1, length, pFile );
-	buffer[ length ] = 0;
+	uint32_t got = (uint32_t) fread( buffer, 1, length, pFile );
+	buffer[ got ] = 0;
 	str.SetStr( buffer );
 
 	delete [] buffer;
@@ -618,7 +645,15 @@ int AGK::cFile::ReadData( char *str, uint32_t length )
 		return 0;
 	}
 
-	return fread( str, 1, length, pFile );
+	/* Retry transient short reads (flaky storage) before giving up. */
+	uint32_t total = 0;
+	for ( int attempt = 0; attempt < 4 && total < length; attempt++ )
+	{
+		total += (uint32_t) fread( str + total, 1, length - total, pFile );
+		if ( total >= length || feof( pFile ) ) break;
+		clearerr( pFile );   /* transient I/O error — clear it and retry */
+	}
+	return (int) total;
 }
 
 /* ------------------------------------------------------------------ */
