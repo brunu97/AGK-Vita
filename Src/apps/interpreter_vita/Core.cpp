@@ -86,12 +86,13 @@ static void poll_input()
 }
 
 /* ----------------------------------------------------------------------
- * Boot splash — an indeterminate loading bar.
+ * Boot splash — fallback indeterminate loading bar.
  *
- * Drawn with glClear + glScissor only: no shaders, no immediate mode, so it
- * is always safe on the prebuilt vitaGL. It animates during the short
- * warm-up; while the (blocking) bytecode + asset load runs it stays frozen
- * on screen — the player never sees a black screen.
+ * Used only when no "splash.png" is bundled (see main()). Drawn with
+ * glClear + glScissor only: no shaders, no immediate mode, so it is always
+ * safe on the prebuilt vitaGL. It animates during the short warm-up; while
+ * the (blocking) bytecode + asset load runs it stays frozen on screen — the
+ * player never sees a black screen.
  * -------------------------------------------------------------------- */
 static void splash_frame( float t )
 {
@@ -124,6 +125,23 @@ static void splash_frame( float t )
     vglSwapBuffers( GL_FALSE );
 }
 
+/* Plain navy clear, no bar. Used for the very first frame, before
+ * agk::InitGraphics(): there is no renderer yet, so this raw glClear is all
+ * that is safe — it just guarantees the screen is never black. */
+static void splash_clear( void )
+{
+    glDisable( GL_SCISSOR_TEST );
+    glClearColor( 0.078f, 0.094f, 0.141f, 1.0f );   /* dark navy */
+    glClear( GL_COLOR_BUFFER_BIT );
+    vglSwapBuffers( GL_FALSE );
+}
+
+/* AGK resource IDs for the optional boot-splash image. Both are deleted
+ * before App.Begin() runs the game bytecode, so the values cannot collide
+ * with anything the game allocates. */
+#define SPLASH_IMG_ID  9990
+#define SPLASH_SPR_ID  9990
+
 int main( int argc, char *argv[] )
 {
     (void)argc; (void)argv;
@@ -139,8 +157,9 @@ int main( int argc, char *argv[] )
 
     vglInitExtended(0, 960, 544, 16 * 1024 * 1024, SCE_GXM_MULTISAMPLE_NONE);
 
-    /* Show the splash immediately so the screen is never black. */
-    splash_frame( 0.0f );
+    /* Show something immediately so the screen is never black. The renderer
+     * does not exist yet, so this is only a plain navy clear. */
+    splash_clear();
 
     agk::SetCompanyName( "AGKVita" );
     /* Asset mode 2 = interpreter / AGK Player. */
@@ -150,13 +169,44 @@ int main( int argc, char *argv[] )
     {
         agk::InitGraphics( 0, AGK_RENDERER_MODE_PREFER_BEST, 0 );
 
-        /* Animated splash warm-up — the loading bar sweeps across once or
-         * twice (~1 s). After this the bar stays frozen on screen while the
-         * blocking bytecode load + the game's own asset loading run. */
-        for ( int f = 0; f < 60; f++ ) splash_frame( f / 40.0f );
+        /* Boot splash. If "splash.png" is bundled (app0:/splash.png) it is
+         * drawn full-screen through AGK's own renderer — the same GLES2
+         * shader path the game itself uses, so it is exactly as safe as the
+         * game. If the file is absent or fails to load, fall back to the
+         * animated loading bar. Either way the image/bar stays frozen on
+         * screen while the blocking load inside App.Begin() runs. */
+        bool haveImage = false;
+        if ( agk::GetFileExists( "splash.png" ) )
+        {
+            try
+            {
+                agk::SetVirtualResolution( 960, 544 );
+                agk::SetClearColor( 20, 24, 36 );
+                agk::LoadImage( SPLASH_IMG_ID, "splash.png" );
+                agk::CreateSprite( SPLASH_SPR_ID, SPLASH_IMG_ID );
+                agk::SetSpriteSize( SPLASH_SPR_ID, 960, 544 );
+                agk::SetSpritePosition( SPLASH_SPR_ID, 0, 0 );
+                agk::Sync();   /* render once — the framebuffer holds it frozen */
+                agk::DeleteSprite( SPLASH_SPR_ID );
+                agk::DeleteImage( SPLASH_IMG_ID );
+                haveImage = true;
+            }
+            catch( ... )
+            {
+                haveImage = false;   /* corrupt PNG etc. -> use the bar */
+            }
+        }
+
+        if ( !haveImage )
+        {
+            /* Animated loading-bar warm-up — sweeps across ~1 s. */
+            for ( int f = 0; f < 60; f++ ) splash_frame( f / 40.0f );
+        }
 
         App.Begin();
-        splash_frame( 1.0f );   /* keep the splash up during first-frame load */
+
+        if ( !haveImage )
+            splash_frame( 1.0f );   /* keep the bar up during first-frame load */
     }
     catch( ... )
     {
