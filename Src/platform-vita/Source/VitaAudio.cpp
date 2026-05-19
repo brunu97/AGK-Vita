@@ -617,7 +617,10 @@ void AGKMusicOGG::PlatformResume()
 
 void AGKMusicOGG::PlatformSetVolume()
 {
-    if ( m_pSoundData ) MUSIC( m_pSoundData )->volume = m_iVolume;
+    /* The mixer only sees MUSIC(...)->volume, so fold the global OGG music
+     * volume (SetMusicSystemVolumeOGG -> g_iMasterVolume) into it here. */
+    if ( m_pSoundData )
+        MUSIC( m_pSoundData )->volume = m_iVolume * g_iMasterVolume / 100;
 }
 
 void AGKMusicOGG::PlatformClearBuffers()
@@ -655,7 +658,7 @@ int AGKMusicOGG::PlatformAddBuffer( int *reset )
     pthread_mutex_lock( &g_audioMutex );
     m->channels = (m_fmt.nChannels == 2) ? 2 : 1;
     m->rate     = m_fmt.nSamplesPerSec ? m_fmt.nSamplesPerSec : 44100;
-    m->volume   = m_iVolume;
+    m->volume   = m_iVolume * g_iMasterVolume / 100;   /* per-track * global */
     if ( m->tail ) m->tail->next = b; else m->head = b;
     m->tail = b;
     m->numBuffers++;
