@@ -1,0 +1,14 @@
+# AGK Vita Tier 2 — game metadata.
+#
+# Edit the values on the right of the '=' and rebuild — no CMakeLists edits
+# needed.
+
+# Shown on the Vita's LiveArea bubble.
+GAME_NAME = AGK Vita Tier 2 Demo
+
+# Exactly 4 uppercase letters + 5 digits. Must be unique per game on the
+# Vita (two different games with the same TITLE_ID will collide).
+TITLE_ID = AGKD00001
+
+# App version. Two digits, dot, two digits.
+APP_VERSION = 01.00

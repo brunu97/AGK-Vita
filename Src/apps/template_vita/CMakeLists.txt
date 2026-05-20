@@ -26,9 +26,33 @@ endif()
 project(agk_template_vita CXX C)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
 
-set(VITA_APP_NAME "AGK Vita Template")
-set(VITA_TITLEID  "AGKT00001")
+# ---- Game metadata --------------------------------------------------------
+# Defaults — overridden by config.txt (which you can edit without touching
+# this file).
+set(VITA_APP_NAME "AGK Vita Game")
+set(VITA_TITLEID  "AGKG00001")
 set(VITA_VERSION  "01.00")
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config.txt")
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/config.txt" CONFIG_LINES)
+    foreach(LINE ${CONFIG_LINES})
+        string(STRIP "${LINE}" LINE)
+        if(LINE MATCHES "^GAME_NAME[ \t]*=[ \t]*(.+)$")
+            set(VITA_APP_NAME "${CMAKE_MATCH_1}")
+        elseif(LINE MATCHES "^TITLE_ID[ \t]*=[ \t]*(.+)$")
+            set(VITA_TITLEID "${CMAKE_MATCH_1}")
+        elseif(LINE MATCHES "^APP_VERSION[ \t]*=[ \t]*(.+)$")
+            set(VITA_VERSION "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+endif()
+
+if(NOT VITA_TITLEID MATCHES "^[A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][0-9]$")
+    message(FATAL_ERROR "TITLE_ID '${VITA_TITLEID}' must be 4 uppercase letters + 5 digits (e.g. AGKG00001). Edit config.txt.")
+endif()
+
+message(STATUS "Game name : ${VITA_APP_NAME}")
+message(STATUS "Title ID  : ${VITA_TITLEID}")
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD   99)
@@ -84,6 +108,7 @@ include_directories(
   ${REND_SRC}
   ${VITA_SRC}
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/game   # so headers in game/ are reachable
 )
 
 # ----------------------------------------------------------------------------
@@ -210,10 +235,17 @@ list(APPEND THIRD_PARTY_SRC ${JPEG_SRC})
 file(GLOB GIF_SRC  ${AGK_ROOT}/giflib/*.c)
 list(APPEND THIRD_PARTY_SRC ${GIF_SRC})
 
-# Game / template
+# ---- Game sources --------------------------------------------------------
+# Drop your game's .cpp / .h files into the game/ folder. They are picked
+# up automatically — no CMakeLists edit needed.
+file(GLOB GAME_SRC ${CMAKE_CURRENT_SOURCE_DIR}/game/*.cpp)
+if(NOT GAME_SRC)
+    message(FATAL_ERROR "No .cpp files found in game/. Add at least one (e.g. template.cpp).")
+endif()
+
 set(TEMPLATE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/Core.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/template.cpp
+  ${GAME_SRC}
 )
 
 add_executable(${PROJECT_NAME}
@@ -274,15 +306,7 @@ target_link_libraries(${PROJECT_NAME}
 # vitaGL needs the C++ runtime — use the C++ linker driver.
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 
+# Build the .self only — VPK packaging is done by tools/make_vpk.ps1, which
+# stages files under a relative path so vita-pack-vpk never receives an
+# absolute path containing a space.
 vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME} UNSAFE)
-vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
-  VERSION ${VITA_VERSION}
-  NAME    ${VITA_APP_NAME}
-  FILE sce_sys/icon0.png                          sce_sys/icon0.png
-  FILE sce_sys/livearea/contents/bg.png           sce_sys/livearea/contents/bg.png
-  FILE sce_sys/livearea/contents/startup.png      sce_sys/livearea/contents/startup.png
-  FILE sce_sys/livearea/contents/template.xml     sce_sys/livearea/contents/template.xml
-  FILE media/logo.png                             logo.png
-  FILE media/beep.wav                             beep.wav
-  FILE media/music.ogg                            music.ogg
-)
